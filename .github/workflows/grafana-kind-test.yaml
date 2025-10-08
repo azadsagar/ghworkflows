@@ -1,0 +1,81 @@
+name: Test Plugin in Kind Cluster
+on:
+  workflow_call:
+    inputs:
+      plugin_artifact_name:
+        type: string
+        required: true
+        description: Name of the artifact that contains the plugin zip file
+      plugin_file_name:
+        type: string
+        required: true
+        description: Name of the plugin zip file inside the artifact
+
+      manifest_artifact_name:
+        type: string
+        required: true
+        description: Name of the artifact that contains the manifest file
+      manifest_file_name:
+        type: string
+        required: true
+        description: Name of the manifest file inside the artifact
+
+      grafana_docker_image:
+        type: string
+        required: false
+        default: sagarbarai/grafana:10.4.4-cw0.1
+        description: URI to grafana docker image
+
+permissions:
+  id-token: write
+  pull-requests: write
+  contents: read
+  actions: write
+
+jobs:
+  test-in-kind:
+    name: Test Plugin in Kind Cluster
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Kind Cluster
+        uses: helm/kind-action@v1
+
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plugin_artifact_name }}
+          path: ./plugin-artifact
+
+      - name: Download manifest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.manifest_artifact_name }}
+          path: ./manifest-artifact
+
+      - name: Test Plugin
+        run: |
+          # run docker image
+          kubectl run grafana-test --image=${{ inputs.grafana_docker_image }}
+          kubectl wait --for=condition=Ready pod/grafana-test --timeout=60s
+          
+          # copy plugin zip to pod and extract
+          kubectl cp ./plugin-artifact/${{ inputs.plugin_file_name }} grafana-test:/tmp/
+          kubectl exec grafana-test -c grafana -- unzip /tmp/${{ inputs.plugin_file_name }} -d /var/lib/grafana/plugins/
+          
+          # read the manifest file
+          jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
+            plugin_name=`echo $item | jq -r '.name'`
+            provision_file=`echo $item | jq -r '.provision'`
+            kubectl exec grafana-test -c grafana -- mv /etc/grafana/provisioning/plugins/${provision_file} /etc/grafana/provisioning/plugins/
+          done
+          
+          # ask config reload to reload grafana binary
+          kubectl exec grafana-test -c grafana -- touch /var/lib/grafana/plugins/watcher
+          sleep 60
+          
+          # if below command returns non-zero exit code, plugin validation failed
+          kubectl get pod grafana-test | grep -i running || exit 1
+          
+          # cleanup kind cluster
+          kubectl delete pod grafana-test
+
