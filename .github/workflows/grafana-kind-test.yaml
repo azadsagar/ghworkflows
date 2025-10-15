@@ -61,12 +61,13 @@ jobs:
           # copy plugin zip to pod and extract
           kubectl cp ./plugin-artifact/${{ inputs.plugin_file_name }} grafana-test:/tmp/
           kubectl exec grafana-test -c grafana-test -- unzip /tmp/${{ inputs.plugin_file_name }} -d /var/lib/grafana/plugins/
+          kubectl exec grafana-test -c grafana-test -- mkdir -p /var/lib/grafana/plugins/plugin-config
           
           # read the manifest file
           jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
             plugin_name=`echo $item | jq -r '.name'`
             provision_file=`echo $item | jq -r '.provision'`
-            kubectl exec grafana-test -c grafana-test -- mv /var/lib/grafana/plugins/${provision_file} /etc/grafana/provisioning/plugins/
+            kubectl exec grafana-test -c grafana-test -- mv /var/lib/grafana/plugins/${provision_file} /var/lib/grafana/plugins/plugin-config/
           done
           
           # ask config reload to reload grafana binary
