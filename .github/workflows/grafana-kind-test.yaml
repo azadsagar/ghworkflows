@@ -66,7 +66,7 @@ jobs:
           jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
             plugin_name=`echo $item | jq -r '.name'`
             provision_file=`echo $item | jq -r '.provision'`
-            kubectl exec grafana-test -c grafana-test -- mv /etc/grafana/provisioning/plugins/${provision_file} /etc/grafana/provisioning/plugins/
+            kubectl exec grafana-test -c grafana-test -- mv /var/lib/grafana/plugins/${provision_file} /etc/grafana/provisioning/plugins/
           done
           
           # ask config reload to reload grafana binary
