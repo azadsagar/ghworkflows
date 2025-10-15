@@ -72,7 +72,9 @@ jobs:
           
           # ask config reload to reload grafana binary
           kubectl exec grafana-test -c grafana-test -- touch /var/lib/grafana/plugins/watcher
-          sleep 60
+          echo "Waiting for grafana to reload..."
+          sleep 90
+          kubectl logs grafana-test
           
           # if below command returns non-zero exit code, plugin validation failed
           kubectl get pod grafana-test | grep -i running || exit 1
