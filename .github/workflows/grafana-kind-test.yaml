@@ -74,30 +74,36 @@ jobs:
           # copy plugin zip to pod and extract
           kubectl cp ./plugin-artifact/${{ inputs.plugin_file_name }} grafana-test:/tmp/
           kubectl exec grafana-test -c grafana-test -- unzip /tmp/${{ inputs.plugin_file_name }} -d /var/lib/grafana/plugins/
+          echo "Creating plugin config directory"
           kubectl exec grafana-test -c grafana-test -- mkdir -p /var/lib/grafana/plugins/plugin-config
           
           # read the manifest file
           jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
             plugin_name=`echo $item | jq -r '.name'`
             provision_file=`echo $item | jq -r '.provision'`
+            echo "Moving plugin config file ${provision_file}"
             kubectl exec grafana-test -c grafana-test -- mv /var/lib/grafana/plugins/${provision_file} /var/lib/grafana/plugins/plugin-config/
           done
           
           # ask config reload to reload grafana binary
+          echo "Performing grafana hot reload"
           kubectl exec grafana-test -c grafana-test -- touch /var/lib/grafana/plugins/watcher
           echo "Waiting for grafana to reload..."
           sleep 90
+          echo "Validating via logs"
           kubectl logs grafana-test | tee /tmp/logs.txt
           
           # Validate provisionig file exist in target directories
           jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
             provision_file=`echo $item | jq -r '.provision'`
+            echo "Validating provisioning file exist ${provision_file}"
             kubectl exec grafana-test -c grafana-test -- ls /var/lib/grafana/plugins/plugin-config/${provision_file}
           done
           
           grep -iw level=error /tmp/logs.txt && exit 1 || echo "No issues found"
           
           # if below command returns non-zero exit code, plugin validation failed
+          echo "Current pod status..."
           kubectl get pod grafana-test | grep -i running || exit 1
           
           # cleanup kind cluster
