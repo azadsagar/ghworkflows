@@ -91,7 +91,7 @@ jobs:
           echo "Waiting for grafana to reload..."
           sleep 90
           echo "Validating via logs"
-          kubectl logs grafana-test | tee /tmp/logs.txt
+          kubectl logs grafana-test > /tmp/logs.txt
           
           # Validate provisionig file exist in target directories
           jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
