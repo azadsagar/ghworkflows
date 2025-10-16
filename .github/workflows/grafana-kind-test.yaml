@@ -20,6 +20,16 @@ on:
         required: true
         description: Name of the manifest file inside the artifact
 
+      grafana_server_domain:
+        type: string
+        required: true
+        description: Root domain to be set as grafana environment variable
+
+      grafana_server_url:
+        type: string
+        required: true
+        description: Server URL to be set as grafana environment variable
+
       grafana_docker_image:
         type: string
         required: false
@@ -53,9 +63,12 @@ jobs:
           path: ./manifest-artifact
 
       - name: Test Plugin
+        env:
+          GF_SERVER_ROOT_URL: ${{ grafana_server_domain }}
+          GF_SERVER_DOMAIN: ${{ grafana_server_url }}
         run: |
           # run docker image
-          kubectl run grafana-test --image=${{ inputs.grafana_docker_image }}
+          kubectl run grafana-test --image=${{ inputs.grafana_docker_image }} --env="GF_SERVER_ROOT_URL=${GF_SERVER_ROOT_URL}" --env="GF_SERVER_DOMAIN=${GF_SERVER_DOMAIN}"
           kubectl wait --for=condition=Ready pod/grafana-test --timeout=60s
           
           # copy plugin zip to pod and extract
@@ -74,7 +87,15 @@ jobs:
           kubectl exec grafana-test -c grafana-test -- touch /var/lib/grafana/plugins/watcher
           echo "Waiting for grafana to reload..."
           sleep 90
-          kubectl logs grafana-test
+          kubectl logs grafana-test | tee /tmp/logs.txt
+          
+          # Validate provisionig file exist in target directories
+          jq -c '.apps[]' ./manifest-artifact/${{ inputs.manifest_file_name }} | while read -r item; do
+            provision_file=`echo $item | jq -r '.provision'`
+            kubectl exec grafana-test -c grafana-test -- ls /var/lib/grafana/plugins/plugin-config/${provision_file}
+          done
+          
+          grep -iw level=error /tmp/logs.txt && exit 1 || echo "No issues found"
           
           # if below command returns non-zero exit code, plugin validation failed
           kubectl get pod grafana-test | grep -i running || exit 1
